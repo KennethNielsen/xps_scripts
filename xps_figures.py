@@ -1,6 +1,8 @@
 
+import numpy as np
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
+from collections import ChainMap
 
 
 class MultipleFigures(object):
@@ -30,23 +32,69 @@ class MultipleFigures(object):
         """plot from Avantage export"""
         graphs = settings['graphs']
         for graph in graphs:
-            axes = plt.subplot(self.gridspec[graph['grid_pos']])
+            # Chained settings and graph settings
+            chained_settings = ChainMap(graph, settings)
+
+            # Get the data
             graph_data = data[graph['key']]
+
+            # Get supplot and graph specific settings
+            axes = plt.subplot(self.gridspec[graph['grid_pos']])
+
+            # Extract x and plot counts
+            x = graph_data['Binding Energy (E)']
             linewidth = graph.get('linewidth', 2)
-            axes.plot(graph_data['Binding Energy (E)'], graph_data['Counts'], linewidth=linewidth)
+            axes.plot(x, graph_data['Counts'], label='Counts',
+                      linewidth=linewidth)
+
+            # Check if there is a background and plot that
             background = graph_data.get('Backgnd.')
             if background is not None:
-                axes.plot(graph_data['Binding Energy (E)'], background, linewidth=1)
-            
-            self._format_axes(axes, graph)
+                backgnd_label = graph.get('backgnd_label', graph['key'].split(' ')[0] + ' backgnd.')
+                mask = np.where(background > 0.1)
+                axes.plot(x[mask], background[mask], linewidth=1, label=backgnd_label)
+
+            # Plot fits
+            if graph_data.get('Envelope') is not None:
+                graph_data_copy = graph_data.copy()
+                envelope = graph_data_copy.pop('Envelope')
+                for exclude_key in ('Binding Energy (E)', 'Backgnd.', 'Residuals', 'Counts'):
+                    try:
+                        graph_data_copy.pop(exclude_key)
+                    except KeyError:
+                        pass
+                axes.plot(x, envelope, label='Envelope')
+
+                for fit_name, fit_data in graph_data_copy.items():
+                    mask = np.where(fit_data > 0.1)
+                    axes.plot(x[mask], fit_data[mask], color='#AEB404')
+
+            self._format_axes(axes, chained_settings)
 
     def _format_axes(self, axes, graph):
         """Apply different"""
-        # Reverse x-axes
-        axes.set_xlim(reversed(axes.get_xlim()))
+        loc = graph.get('loc', 'best')
+        legend_fontsize = graph.get('legend_fontsize', 'medium')
+        axes.legend(loc=loc, fontsize=legend_fontsize)
+
+        # Adjust xlim and reverse x-axes
+        x_limits = list(axes.get_xlim())
+        for n, limit in enumerate(graph.get('xlim', ())):
+            if limit is not None:
+                x_limits[n] = limit
+        axes.set_xlim(reversed(x_limits))
+
+        # Adjust ylim
+        y_limits = list(axes.get_ylim())
+        if graph.get('ylim') is not None:
+            for n, limit in enumerate(graph['ylim']):
+                if limit is not None:
+                    y_limits[n] = limit
+            axes.set_ylim(y_limits)
 
         # Apply title
-        axes.set_title(graph['title'])
+        title = graph.get('title', graph['key'].split(' ')[0])
+        axes.set_title(title)
 
     def _finalize_figure(self, settings):
         """Finalize figure"""
@@ -54,8 +102,6 @@ class MultipleFigures(object):
 
     def show(self):
         plt.show()
-            
-
 
 
 def main():
@@ -63,15 +109,16 @@ def main():
     avexport = AvantageXLSXExport("/home/kenni/Dokumenter/xps/soren_dahl_battery/soren_dahl_battery/HT1/peak table.xlsx")
 
     graphs = [
-        {'key': 'Ni2p Scan', 'grid_pos': (0, 0), 'title': 'Ni2p'},
-        {'key': 'Mn2p Scan', 'grid_pos': (0, 1), 'title': 'Mn2p'},
-        {'key': 'S2p Scan more scans', 'grid_pos': (1, 0), 'title': 'S2p'},
-        {'key': 'O1s Scan', 'grid_pos': (1, 1), 'title': 'O1s'},
-        {'key': 'C1s Scan', 'grid_pos': (2, 0), 'title': 'C1s'},
-        {'key': 'Si2p Scan', 'grid_pos': (2, 1), 'title': 'Si2p'},
+        {'key': 'Ni2p Scan', 'grid_pos': (0, 0), 'loc': 'lower left', 'backgnd_label': 'Ni2p3 backgnd.'},
+        {'key': 'Mn2p Scan', 'grid_pos': (0, 1), 'backgnd_label': 'Mn2p3 backgnd.'},
+        {'key': 'S2p Scan more scans', 'grid_pos': (1, 0), 'xlim': (160, None), 'ylim': (320, 400)},
+        {'key': 'O1s Scan', 'grid_pos': (1, 1)},
+        {'key': 'C1s Scan', 'grid_pos': (2, 0)},
+        {'key': 'Si2p Scan', 'grid_pos': (2, 1)},
         
     ]
     settings = {
+        'legend_fontsize': 'small',
         'gridspec': (3, 2),
         'graphs': graphs,
     }
