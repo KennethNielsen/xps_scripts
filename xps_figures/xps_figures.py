@@ -55,6 +55,7 @@ class MultipleFigures(object):
                 axes.plot(x[mask], background[mask], linewidth=1, label=backgnd_label)
 
             # Plot fits
+            fit_legend_set = False
             if graph_data.get('Envelope') is not None:
                 graph_data_copy = graph_data.copy()
                 envelope = graph_data_copy.pop('Envelope')
@@ -67,13 +68,18 @@ class MultipleFigures(object):
 
                 for fit_name, fit_data in graph_data_copy.items():
                     mask = np.where(fit_data > 0.1)
-                    axes.plot(x[mask], fit_data[mask], color='#AEB404')
+                    if not fit_legend_set:
+                        legend = 'Fits'
+                        fit_legend_set = True
+                    else:
+                        legend = None
+                    axes.plot(x[mask], fit_data[mask], color='#AEB404', label=legend)
 
             self._format_axes(axes, chained_settings)
 
     def _format_axes(self, axes, graph):
         """Apply different"""
-        loc = graph.get('loc', 'best')
+        loc = graph.get('loc', 'upper left')
         legend_fontsize = graph.get('legend_fontsize', 'medium')
         axes.legend(loc=loc, fontsize=legend_fontsize)
 
@@ -109,16 +115,16 @@ def main():
     avexport = AvantageXLSXExport("/home/kenni/Dokumenter/xps/soren_dahl_battery/soren_dahl_battery/HT1/peak table.xlsx")
 
     graphs = [
-        {'key': 'Ni2p Scan', 'grid_pos': (0, 0), 'loc': 'lower left', 'backgnd_label': 'Ni2p3 backgnd.'},
-        {'key': 'Mn2p Scan', 'grid_pos': (0, 1), 'backgnd_label': 'Mn2p3 backgnd.'},
-        {'key': 'S2p Scan more scans', 'grid_pos': (1, 0), 'xlim': (160, None), 'ylim': (320, 400)},
+        {'key': 'Ni2p Scan', 'grid_pos': (0, 0), 'backgnd_label': 'Ni2p3 backgnd.', 'ylim': (2450, None)},
+        {'key': 'Mn2p Scan', 'grid_pos': (0, 1), 'backgnd_label': 'Mn2p3 backgnd.', 'ylim': (None, 3300)},
+        {'key': 'S2p Scan more scans', 'grid_pos': (1, 0), 'xlim': (160, None), 'ylim': (320, 380)},
         {'key': 'O1s Scan', 'grid_pos': (1, 1)},
         {'key': 'C1s Scan', 'grid_pos': (2, 0)},
         {'key': 'Si2p Scan', 'grid_pos': (2, 1)},
         
     ]
     settings = {
-        'legend_fontsize': 'small',
+        'legend_fontsize': 'x-small',
         'gridspec': (3, 2),
         'graphs': graphs,
     }
