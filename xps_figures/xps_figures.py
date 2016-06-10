@@ -1,13 +1,71 @@
 
+from __future__ import division
+
 import numpy as np
+import matplotlib as mpl
+# Make a litle extra room around the axis labels
+mpl.rcParams['xtick.major.pad'] = 8
+mpl.rcParams['ytick.major.pad'] = 8
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
-from collections import ChainMap
+try:
+    from collections import ChainMap
+except ImportError:
+    from chainmap import ChainMap
 
 
-class MultipleFigures(object):
+class BaseXPSFigure(object):
+    """Base XPS Figure"""
 
-    def __init__(self, data, settings, data_type='avantage_export'):
+    def _finalize_figure(self, settings):
+        """Finalize figure"""
+        plt.tight_layout()
+
+    def show(self):
+        plt.show()
+
+    def savefig(self, *args, **kwargs):
+        """Call plt savefig"""
+        plt.savefig(*args, **kwargs)
+
+    def _format_axes_common(self, axes, graph, height_fractions):
+        """Common format axes code"""
+        loc = graph.get('loc', 'upper right')
+        legend_fontsize = graph.get('legend_fontsize',
+                                    self._subplot_y_size // height_fractions['legend'])
+        axes.legend(loc=loc, fontsize=legend_fontsize)
+
+        # Adjust xlim and reverse x-axes
+        x_limits = list(axes.get_xlim())
+        for n, limit in enumerate(graph.get('xlim', ())):
+            if limit is not None:
+                x_limits[n] = limit
+        axes.set_xlim(reversed(x_limits))
+
+        # Adjust ylim
+        y_limits = list(axes.get_ylim())
+        if graph.get('ylim') is not None:
+            for n, limit in enumerate(graph['ylim']):
+                if limit is not None:
+                    y_limits[n] = limit
+            axes.set_ylim(y_limits)
+
+        # Change size of tick labels
+        tick_label_size = graph.get('tick_label_size', self._subplot_y_size // height_fractions['tick_label'])
+        axes.tick_params(axis='both', which='major', labelsize=tick_label_size)
+
+
+        # Apply title
+        title = graph.get('title', graph['key'].split(' ')[0])
+        title_size = graph.get('title_size', self._subplot_y_size // height_fractions['title'])
+        axes.set_title(title, fontsize=title_size)
+
+
+
+class MultipleFigures(BaseXPSFigure):
+
+    def __init__(self, data, settings, data_type='avantage_export',
+                 figure_args={'figsize': (8, 6), 'dpi': 100}):
         """Init local variables
 
         Args:
@@ -15,7 +73,12 @@ class MultipleFigures(object):
             settings (dict): Specify settings
 
         """
+
+        self._subplot_x_size = figure_args['figsize'][0] * figure_args['dpi'] // settings['gridspec'][1]
+        self._subplot_y_size = figure_args['figsize'][1] * figure_args['dpi'] // settings['gridspec'][0]
+
         self.gridspec = gridspec.GridSpec(*settings['gridspec'])
+        self.figure = plt.figure(**figure_args)
 
         if data_type == 'avantage_export':
             self._plot_from_avantage_export(data, settings)
@@ -79,35 +142,151 @@ class MultipleFigures(object):
 
     def _format_axes(self, axes, graph):
         """Apply different"""
-        loc = graph.get('loc', 'upper left')
-        legend_fontsize = graph.get('legend_fontsize', 'medium')
-        axes.legend(loc=loc, fontsize=legend_fontsize)
+        height_fractions = {'legend': 30, 'tick_label': 28, 'title': 18}
+        height_fractions.update(graph.get('height_fractions', {}))
+        self._format_axes_common(axes, graph, height_fractions)
 
-        # Adjust xlim and reverse x-axes
-        x_limits = list(axes.get_xlim())
-        for n, limit in enumerate(graph.get('xlim', ())):
-            if limit is not None:
-                x_limits[n] = limit
-        axes.set_xlim(reversed(x_limits))
+        # Legends
+        label_size = graph.get('height_fractions', {}).get('label_size', self._subplot_y_size // 22)
+        grid_pos = graph['grid_pos']
+        # Only set the labels on the outer plots
+        if grid_pos[1] == 0:
+            axes.set_ylabel('Counts [cps]', fontsize=label_size)
+        if grid_pos[0] == self.gridspec.get_geometry()[0] - 1:
+            axes.set_xlabel('Binding energy [eV]', fontsize=label_size)
 
-        # Adjust ylim
-        y_limits = list(axes.get_ylim())
-        if graph.get('ylim') is not None:
-            for n, limit in enumerate(graph['ylim']):
-                if limit is not None:
-                    y_limits[n] = limit
-            axes.set_ylim(y_limits)
 
-        # Apply title
-        title = graph.get('title', graph['key'].split(' ')[0])
-        axes.set_title(title)
+class Survey(BaseXPSFigure):
+    def __init__(self, data, settings, data_type='avantage_export',
+                 figure_args={'figsize': (18, 11), 'dpi': 100}):
+        """Init local variables
 
-    def _finalize_figure(self, settings):
-        """Finalize figure"""
-        plt.tight_layout()
+        Args:
+            data (object): The data to be plotted
+            settings (dict): Specify settings
 
-    def show(self):
-        plt.show()
+        """
+        self._subplot_x_size = figure_args['figsize'][0] * figure_args['dpi']
+        self._subplot_y_size = figure_args['figsize'][1] * figure_args['dpi']
+
+        self.figure = plt.figure(**figure_args)
+        self.axes = self.figure.add_subplot(111)
+
+        if data_type == 'avantage_export':
+            self._plot_from_avantage_export(data, settings)
+        else:
+            raise ValueError('Unkown data type: {}'.format(data_type))
+
+        self._finalize_figure(settings)
+
+    def _plot_from_avantage_export(self, data, settings):
+        """"""
+        graph_data = data[settings.get('key', 'Survey Scan')]
+        self.axes.plot(graph_data['Binding Energy (E)'], graph_data['Counts'], label='Counts')
+        self._format_axes(self.axes, settings)
+
+    def _format_axes(self, axes, graph):
+        """Format the axes"""
+        height_fractions = {'legend': 35, 'tick_label': 30, 'title': 20}
+        height_fractions.update(graph.get('height_fractions', {}))
+        self._format_axes_common(self.axes, graph, height_fractions)
+
+        # Legends
+        label_size = graph.get('height_fractions', {}).get('label_size', self._subplot_y_size // 26)
+        axes.set_ylabel('Counts [cps]', fontsize=label_size)
+        axes.set_xlabel('Binding energy [eV]', fontsize=label_size)
+
+
+class Compare(BaseXPSFigure):
+    """A figure type for comparisons of similar spectra"""
+
+    def __init__(self, settings, data_type='avantage_export',
+                 figure_args={'figsize': (18, 11), 'dpi': 100}):
+
+        self._subplot_x_size = figure_args['figsize'][0] * figure_args['dpi']
+        self._subplot_y_size = figure_args['figsize'][1] * figure_args['dpi']
+
+        self.figure = plt.figure(**figure_args)
+        self.axes = self.figure.add_subplot(111)
+
+        if data_type == 'avantage_export':
+            self._plot_from_avantage_export(settings)
+        else:
+            raise ValueError('Unkown data type: {}'.format(data_type))
+
+        self._finalize_figure(settings)
+
+    def _plot_from_avantage_export(self, settings):
+        """Make the comparison plot from an avantage export"""
+        autoscale_params = None
+        for graph in settings['graphs']:
+            data = graph['data']
+            x = data[graph['key']]['Binding Energy (E)']
+            y = data[graph['key']]['Counts']
+            if graph.get('x_shift') is not None:
+                x += graph['x_shift']
+
+            legend = graph['legend']
+            if 'auto_scale' in settings:
+                base, height = self._calculate_base_and_height(x, y, settings['auto_scale'])
+
+                if autoscale_params is None:
+                    print('Save autoscale params based on', graph['legend'])
+                    autoscale_params = base, height
+                    legend = graph['legend']
+                else:
+                    y /= height / autoscale_params[1]
+                    # Recalculate base after scaling
+                    base, _ = self._calculate_base_and_height(x, y, settings['auto_scale'])
+                    y -= base - autoscale_params[0]
+                    legend = graph['legend'] + ' autoscale'
+
+            self.axes.plot(x, y, label=legend)
+
+        graph = settings.copy()
+        graph['key'] = settings['graphs'][0]['key']
+
+        self._format_axes(self.axes, graph)
+
+    def _calculate_base_and_height(self, x, y, autoscale_settings):
+        """Calculate the baseline"""
+        auto_scale_limits = autoscale_settings['lim']
+        revx = x[::-1]
+        revy = y[::-1]
+        cut_index = [np.searchsorted(revx, lim) for lim in auto_scale_limits]
+        #print('cut_index', x[cut_index])
+
+        npoints = autoscale_settings['npoints']
+        #print('Lower', revx[cut_index[0]: cut_index[0] + npoints])
+        #print('upper', revx[cut_index[1] - npoints: cut_index[1]])
+        lower = revy[cut_index[0]: cut_index[0] + npoints].mean()
+        upper = revy[cut_index[1] - npoints: cut_index[1]].mean()
+        base_around = autoscale_settings['base_around']
+        if base_around == 'upper':
+            base = upper
+        elif base_around == 'lower':
+            base = lower
+        elif base_around == 'both':
+            base = np.mean([lower, upper])
+
+        height = revy[cut_index[0]: cut_index[1]].max() - base
+
+        return base, height
+
+    def _format_axes(self, axes, graph):
+        """Format the axes"""
+        height_fractions = {'legend': 35, 'tick_label': 30, 'title': 20}
+        height_fractions.update(graph.get('height_fractions', {}))
+        self._format_axes_common(self.axes, graph, height_fractions)
+
+        # Legends
+        label_size = graph.get('height_fractions', {}).get('label_size', self._subplot_y_size // 26)
+        axes.set_ylabel(graph.get('ylabel', 'Counts [cps]'), fontsize=label_size)
+        axes.set_xlabel('Binding energy [eV]', fontsize=label_size)
+
+    
+        
+
 
 
 def main():
